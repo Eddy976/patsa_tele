@@ -1,0 +1,8 @@
+{
+    "name": "Providers repository",
+    "description": "Plugin Repository",
+    "manifestVersion": 1,
+    "pluginLists": [
+      "https://raw.githubusercontent.com/Eddy976/patsa_tele/builds/plugins.json"
+    ]
+}
