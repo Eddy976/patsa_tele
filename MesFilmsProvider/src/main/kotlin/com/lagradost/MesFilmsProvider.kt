@@ -8,7 +8,7 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 
 class MesFilmsProvider : MainAPI() {
-    override var mainUrl = "https://mesfilms.sbs"
+    override var mainUrl = "https://mesfilms.click"
     override var name = "Mes Films"
     override val hasQuickSearch = false // recherche rapide (optionel, pas vraimet utile)
     override val hasMainPage = true // page d'accueil (optionel mais encoragé)
