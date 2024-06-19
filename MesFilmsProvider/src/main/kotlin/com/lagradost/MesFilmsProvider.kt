@@ -7,6 +7,9 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.network.CloudflareKiller
+import com.lagradost.nicehttp.NiceResponse
+import java.util.*
+
 class MesFilmsProvider : MainAPI() {
     override var mainUrl = "https://mesfilms.click"
     override var name = "Mes Films"
