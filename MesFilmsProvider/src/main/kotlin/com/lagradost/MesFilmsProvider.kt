@@ -6,7 +6,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addRating
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
-
+import com.lagradost.cloudstream3.network.CloudflareKiller
 class MesFilmsProvider : MainAPI() {
     override var mainUrl = "https://mesfilms.click"
     override var name = "Mes Films"
@@ -236,12 +236,18 @@ class MesFilmsProvider : MainAPI() {
         Pair("$mainUrl/evaluations/?get=movies", "Les plus notés"),
         Pair("$mainUrl/films-classiques/", "Quelques classiques"),
     )
-
+suspend fun avoidCloudflare(url: String): NiceResponse {
+        if (!app.get(url).isSuccessful) {
+            return app.get(url, interceptor = interceptor)
+        } else {
+            return app.get(url)
+        }
+}
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
     ): HomePageResponse {
-        val document = app.get(request.data).document
+        val document = avoidCloudflare(request.data).document //app.get(request.data).document
         val movies = document.select("div.items > article.movies")
         val categoryTitle = request.name
         val returnList = movies.mapNotNull { article ->
