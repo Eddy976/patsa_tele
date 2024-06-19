@@ -26,10 +26,11 @@ class MesFilmsProvider : MainAPI() {
     La recherche retourne une SearchResponse, qui peut être des classes suivants: AnimeSearchResponse, MovieSearchResponse, TorrentSearchResponse, TvSeriesSearchResponse
     Chaque classes nécessite des données différentes, mais a en commun le nom, le poster et l'url
      **/
-     private val interceptor = CloudflareKiller()
+    private val interceptor = CloudflareKiller()
+    
     override suspend fun search(query: String): List<SearchResponse> {
         val link = "$mainUrl/?s=$query"
-        val document = app.get(link).document // on convertit le html en un document
+        val document = avoidCloudflare(link).document// app.get(link).document // on convertit le html en un document
         return document.select("div.search-page > div.result-item > article") // on séléctione tous les éléments 'enfant' du type articles
             .filter { article -> // on filtre la liste obtenue de tous les articles
                 val type = article?.selectFirst("> div.image > div.thumbnail > a > span")?.text()
@@ -84,7 +85,7 @@ class MesFilmsProvider : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         // url est le lien retourné par la fonction search (la variable href) ou la fonction getMainPage
-        val document = app.get(url).document // convertit en document
+        val document = avoidCloudflare(url).document//app.get(url).document // convertit en document
 
         val meta = document.selectFirst("div.sheader")
         val poster = meta?.select("div.poster > img")
