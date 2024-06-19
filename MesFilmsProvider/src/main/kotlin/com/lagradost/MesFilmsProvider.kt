@@ -23,6 +23,7 @@ class MesFilmsProvider : MainAPI() {
     La recherche retourne une SearchResponse, qui peut être des classes suivants: AnimeSearchResponse, MovieSearchResponse, TorrentSearchResponse, TvSeriesSearchResponse
     Chaque classes nécessite des données différentes, mais a en commun le nom, le poster et l'url
      **/
+     private val interceptor = CloudflareKiller()
     override suspend fun search(query: String): List<SearchResponse> {
         val link = "$mainUrl/?s=$query"
         val document = app.get(link).document // on convertit le html en un document
