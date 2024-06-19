@@ -11,7 +11,7 @@ import java.util.*
 
 class MesFilmsProvider : MainAPI() {
     override var mainUrl = "https://mesfilms.top"
-    override var name = "Mes Films"
+    override var name = "Films"
     override val hasQuickSearch = false // recherche rapide (optionel, pas vraimet utile)
     override val hasMainPage = true // page d'accueil (optionel mais encoragé)
     override var lang = "fr" // fournisseur est en francais
