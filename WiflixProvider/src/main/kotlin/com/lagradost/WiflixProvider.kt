@@ -249,7 +249,7 @@ class WiflixProvider : MainAPI() {
 
         val document = avoidCloudflare(url).document
         val episodeFrfound =
-            document.select("div.div.blocfr ")
+            document.select("div.blocfr ")
         val episodeVostfrfound =
             document.select("div.blocvostfr")
         var flag = "\uD83C\uDDE8\uD83C\uDDF5"
