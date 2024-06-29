@@ -186,12 +186,10 @@ class NekosamaProvider : MainAPI() {
 
         val episodes = ArrayList<Episode>()
         var mediaType = TvType.Anime
-        val script =
-            document.select("div#main > script:first-of-type")
+        val results =
+            document.select("div.episodes>div.row>div>div>a")
 
-        val srcAllInfoEpisode =
-            Regex("""min\"\,\"([^\}]*)\}""")
-        val results = srcAllInfoEpisode.findAll(script.toString())
+
         //srcAllInfoEpisode.find(script.toString())?.groupValues?.get(1)?
         //////////////////////////////////////
         var title = ""  //document.select("div.offset-md-4 >:not(small)").text()
@@ -200,23 +198,20 @@ class NekosamaProvider : MainAPI() {
         /////////////////////////////////////
 
         results.forEach { infoEpisode ->
-            val episodeScript = infoEpisode.groupValues[1]
+            //val episodeScript = infoEpisode.groupValues[1]
             val srcScriptEpisode =
-                Regex("""episode\"\:\"Ep\. ([0-9]*)\"""")
+                Regex("""([0-9]*)""")
             val episodeNum =
-                srcScriptEpisode.find(episodeScript)?.groupValues?.get(1)?.toIntOrNull()
+                srcScriptEpisode.find(infoEpisode.text())?.groupValues?.get(1)?.toIntOrNull()
             val srcScriptTitle = Regex("""title\"\:\"([^\"]*)\"\,\"url\"\:\"\\\/anime""")
-            val titleE = srcScriptTitle.find(episodeScript)?.groupValues?.get(1)
+            val titleE = infoEpisode.text()
             if (titleE != null) title = titleE
-            val srcScriptlink =
-                Regex("""\"url\"\:\"([^\"]*)\"""") // remove\
-            val link = srcScriptlink.find(episodeScript)?.groupValues?.get(1)
+
+            val link = infoEpisode.attr("href")
 
             if (link != null) link_video = fixUrl(link.replace("\\", ""))
 
-            val srcScriptposter =
-                Regex("""\"url_image\"\:\"([^\"]*)\"""") // remove\
-            //val poster = srcScriptposter.find(episodeScript)?.groupValues?.get(1)
+
             dataUrl = link_video
 
 
@@ -451,4 +446,4 @@ class NekosamaProvider : MainAPI() {
         }
         return newHomePageResponse(request.name, home)
     }
-} 
+}
