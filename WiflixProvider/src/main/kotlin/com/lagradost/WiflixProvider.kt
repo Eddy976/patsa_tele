@@ -14,7 +14,7 @@ import java.util.*
 
 
 class WiflixProvider : MainAPI() {
-    override var mainUrl = "https://wiflix.date"
+    override var mainUrl = "https://wiflix.bio"
     override var name = "Wiflix"
     override val hasQuickSearch = false // recherche rapide (optionel, pas vraimet utile)
     override val hasMainPage = true // page d'accueil (optionel mais encoragé)
@@ -249,7 +249,7 @@ class WiflixProvider : MainAPI() {
 
         val document = avoidCloudflare(url).document
         val episodeFrfound =
-            document.select("div.blocfr")
+            document.select("div.div.blocfr ")
         val episodeVostfrfound =
             document.select("div.blocvostfr")
         var flag = "\uD83C\uDDE8\uD83C\uDDF5"
@@ -270,9 +270,10 @@ class WiflixProvider : MainAPI() {
 
 
         document.select(cssCodeForPlayer).apmap { player -> // séléctione tous les players
-            var playerUrl = "https" + player.attr("href").replace("(.*)https".toRegex(), "")
+            var playerUrl = "https" + player.attr("onclick").replace("(.*)https".toRegex(), "").replace("')","")
+
             if (!playerUrl.isBlank())
-                if (playerUrl.contains("dood")) {
+                if (playerUrl.contains("dood") ) {
                     playerUrl = playerUrl.replace("doodstream.com", "dood.wf")
                 }
             loadExtractor(
