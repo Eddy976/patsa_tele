@@ -15,7 +15,7 @@ import java.util.*
 
 class WiflixProvider : MainAPI() {
     override var mainUrl = "https://wiflix-catalogue.lol"
-    override var name = "Wiflix"
+    override var name = "Wiflix-cat"
     override val hasQuickSearch = false // recherche rapide (optionel, pas vraimet utile)
     override val hasMainPage = true // page d'accueil (optionel mais encoragé)
     override var lang = "fr" // fournisseur est en francais
