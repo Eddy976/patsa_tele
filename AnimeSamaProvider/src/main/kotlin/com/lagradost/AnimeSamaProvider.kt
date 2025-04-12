@@ -1,4 +1,5 @@
 package com.lagradost
+
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
@@ -27,7 +28,7 @@ class AnimeSamaProvider : MainAPI() {
      **/
     override suspend fun search(query: String): List<SearchResponse> {
         val allresultshome: MutableList<SearchResponse> = mutableListOf()
-        val link = "$mainUrl/template-php/defaut/fetch.php" // search'
+        val link = "$mainUrl/template-php/defaut/fetch.php" // search'...
         val document =
             app.post(
                 link,
