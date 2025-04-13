@@ -592,11 +592,7 @@ class AnimeSamaProvider : MainAPI() {
                         link.source,
                         link.name + "",
                         link.url,
-                        link.referer,
-                        getQualityFromName("HD"),
-                        link.isM3u8,
-                        link.headers,
-                        link.extractorData
+                      
                     )
                 )
             }
