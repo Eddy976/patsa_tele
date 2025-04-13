@@ -3,11 +3,8 @@ package com.lagradost
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.nicehttp.NiceResponse
 import org.jsoup.nodes.Element
-import org.jsoup.select.Elements
-import java.util.*
-import kotlin.collections.ArrayList
+import java.util.EnumSet
 
 class AnimeSamaProvider : MainAPI() {
     override var mainUrl = "https://anime-sama.fr"
@@ -18,130 +15,100 @@ class AnimeSamaProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
     private val interceptor = CloudflareKiller()
 
+    private val regexGetlink = Regex("""(http.*)\',""")
+    private val allAnime = Regex("""panneauAnime\(\"(.*)\)\;""")
+
     override suspend fun search(query: String): List<SearchResponse> {
-        val allResults: MutableList<SearchResponse> = mutableListOf()
-        val link = "$mainUrl/template-php/defaut/fetch.php"
-        val document = app.post(link, data = mapOf("query" to query)).document
+        val allResults = mutableListOf<SearchResponse>()
+        val document = app.post("$mainUrl/template-php/defaut/fetch.php", data = mapOf("query" to query)).document
         val results = document.select("a")
-        for (article in results) {
-            allResults.toSearchResponse1(article)
+
+        results.mapNotNullTo(allResults) { element ->
+            val posterUrl = element.select("a > img").attr("src")
+            val onclick = element.attr("onclick")
+            val link = regexGetlink.find(onclick)?.groupValues?.get(1) ?: return@mapNotNullTo null
+            val title = element.text()
+            val tvType = when {
+                title.contains("film", ignoreCase = true) -> TvType.AnimeMovie
+                else -> TvType.Anime
+            }
+            val dubStatus = if (title.contains("vostfr", ignoreCase = true)) EnumSet.of(DubStatus.Subbed) else EnumSet.of(DubStatus.Dubbed)
+
+            newAnimeSearchResponse(title, link, tvType, false) {
+                this.posterUrl = posterUrl
+                this.dubStatus = dubStatus
+            }
         }
+
         return allResults
     }
 
-    private val regexGetlink = Regex("""(http.*)\',\"""")
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit,
+    ): Boolean {
+        val regex = Regex("""'([^']*)'""")
+        val results = regex.findAll(data)
 
-    private suspend fun MutableList<SearchResponse>.toSearchResponse1(element: Element) {
-        val posterUrl = element.select("a>img").attr("src")
-        var linkToAnime = element.select("a").attr("href")
-        val document = avoidCloudflare(linkToAnime).document
-        val allAnimeScripts = document.select("div.flex.flex-wrap > script")
-        AnimeRegex.findAll(allAnimeScripts.toString()).forEach {
-            val text = it.groupValues[1]
-            if (!text.contains("nom\",")) {
-                if (!linkToAnime.endsWith("/")) {
-                    linkToAnime += "/"
+        results.forEach { match ->
+            val playerUrl = match.groupValues[1]
+            if (playerUrl.isNotBlank()) {
+                loadExtractor(httpsify(playerUrl), playerUrl, subtitleCallback) { link ->
+                    callback(
+                        newExtractorLink(
+                            source = link.source,
+                            name = link.name ?: "",
+                            url = link.url
+                        ) {
+                            referer = link.referer
+                            quality = link.quality
+                            isM3u8 = link.isM3u8
+                            headers = link.headers ?: emptyMap()
+                        }
+                    )
                 }
-                val link = linkToAnime + text.split(",")[1].replace("\"", "").trim()
-                add(newAnimeSearchResponse(
-                    text.split(",")[0].replace("\"", "").trim(),
-                    link,
-                    TvType.Anime,
-                    false
-                ) {
-                    this.posterUrl = posterUrl
-                })
             }
         }
+        return true
     }
+
+    override val mainPage = mainPageOf(
+        Pair(mainUrl, "NOUVEAUX"),
+        Pair(mainUrl, "A ne pas rater"),
+        Pair(mainUrl, "Les classiques"),
+        Pair(mainUrl, "Derniers animes ajoutés"),
+    )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val categoryName = request.name
-        val url = request.data
-        val dayOfWeek = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-        val idDay = when (dayOfWeek) {
-            Calendar.MONDAY -> "1"
-            Calendar.TUESDAY -> "2"
-            Calendar.WEDNESDAY -> "3"
-            Calendar.THURSDAY -> "4"
-            Calendar.FRIDAY -> "5"
-            Calendar.SATURDAY -> "6"
-            else -> "0"
+        val sectionName = request.name
+        val document = app.get(mainUrl).document
+        val selector = "div.scrollBarStyled"
+
+        val homeList = when {
+            sectionName.contains("NOUVEAUX", true) -> emptyList() // À remplir si besoin
+            sectionName.contains("ajoutés", true) -> document.select(selector)[8].select("div.shrink-0").mapNotNull { it.toSearchResponse() }
+            sectionName.contains("rater", true) -> document.select(selector)[10].select("div.shrink-0").mapNotNull { it.toSearchResponse() }
+            else -> document.select(selector)[9].select("div.shrink-0").mapNotNull { it.toSearchResponse() }
         }
 
-        if (page > 1) return HomePageResponse(emptyList())
-        val document = avoidCloudflare(url).document
-        val cssSelector = "div.scrollBarStyled"
-        val cssSelectorN = "div#$idDay.fadeJours > div > script"
-
-        val home = when {
-            categoryName.contains("NOUVEAUX") -> {
-                newEpRegex.findAll(document.select(cssSelectorN).toString()).mapNotNull {
-                    it.toSearchResponseNewEp()
-                }.toList()
-            }
-            categoryName.contains("ajoutés") -> {
-                document.select(cssSelector)[8].select("div.shrink-0").mapNotNull {
-                    it.toSearchResponse()
-                }
-            }
-            categoryName.contains("rater") -> {
-                document.select(cssSelector)[10].select("div.shrink-0").mapNotNull {
-                    it.toSearchResponse()
-                }
-            }
-            else -> {
-                document.select(cssSelector)[9].select("div.shrink-0").mapNotNull {
-                    it.toSearchResponse()
-                }
-            }
-        }
-        return newHomePageResponse(HomePageList(categoryName, home))
-    }
-
-    private val newEpRegex = Regex("""cartePlanningAnime\(\"(.*)\)\;""")
-    private val AnimeRegex = Regex("""panneauAnime\(\"(.*)\)\;""")
-
-    private suspend fun MatchResult.toSearchResponseNewEp(): SearchResponse? {
-        val anime = this.groupValues[1]
-        val link = "catalogue/" + anime.split(',')[1].replace("\"", "").trim()
-        if (anime.split(',')[1].lowercase().trim() == "scan" || link.lowercase().contains("/scan/")) return null
-
-        val linked = fixUrl(link)
-        val html = avoidCloudflare(linked)
-        val document = html.document
-        val posterUrl = document.select("img#imgOeuvre").attr("src")
-        val scheduleTime = anime.split(',')[3]
-        val title = anime.split(',')[0]
-        val dubStatus = if (anime.split(',')[5].lowercase().contains("vf")) {
-            EnumSet.of(DubStatus.Dubbed)
-        } else {
-            EnumSet.of(DubStatus.Subbed)
-        }
-
-        return newAnimeSearchResponse(
-            "$scheduleTime \n $title",
-            linked,
-            TvType.Anime,
-            false
-        ) {
-            this.posterUrl = posterUrl
-            this.dubStatus = dubStatus
-        }
+        return newHomePageResponse(listOf(HomePageList(name = sectionName, list = homeList)))
     }
 
     private fun Element.toSearchResponse(): SearchResponse? {
         val posterUrl = select("a > img").attr("src")
-        val title = select("a >div>h1").text()
-        val globalLink = select("a").attr("href")
-        if (globalLink.contains("search.php")) return null
+        val title = select("a > div > h1").text()
+        val link = select("a").attr("href")
 
-        return newAnimeSearchResponse(title, "$globalLink*", TvType.TvSeries, false) {
+        if (link.contains("search.php")) return null
+
+        return newAnimeSearchResponse(title, "$link*", TvType.Anime, false) {
             this.posterUrl = posterUrl
         }
     }
 
-    suspend fun avoidCloudflare(url: String): NiceResponse {
-        return app.get(url)
+    suspend fun avoidCloudflare(url: String): String {
+        return app.get(url, interceptor = interceptor).text
     }
 }
