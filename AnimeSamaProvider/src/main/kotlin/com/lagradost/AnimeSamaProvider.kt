@@ -571,40 +571,41 @@ class AnimeSamaProvider : MainAPI() {
 
     /** récupere les liens .mp4 ou m3u8 directement à partir du paramètre data généré avec la fonction load()**/
     val rgxGetLink = Regex("""'[^']*',""")
-    override suspend fun loadLinks(
-        data: String, // fournit par load()
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit,
-    ): Boolean {
+    
+   override suspend fun loadLinks(
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit,
+): Boolean {
 
-        val results = rgxGetLink.findAll(data)
+    val results = rgxGetLink.findAll(data)
 
-        results.forEach { link ->
+    results.forEach { match ->
+        val playerUrl = match.groupValues[0].replace("'", "").replace(",", "")
 
-            val playerUrl = link.groupValues[0].replace("'", "").replace(",", "")
-
-            if (!playerUrl.isBlank()) loadExtractor(
+        if (playerUrl.isNotBlank()) {
+            loadExtractor(
                 httpsify(playerUrl), playerUrl, subtitleCallback
             ) { link ->
-               callback.invoke(
-    newExtractorLink(
-        source = link.source,
-        name = link.name ?: "",
-        url = link.url
-    ) {
-        this.referer = link.referer
-        this.quality = link.quality
-        this.isM3u8 = link.isM3u8
-        this.headers = link.headers ?: emptyMap()
-    }
-)
-
+                callback.invoke(
+                    newExtractorLink(
+                        source = link.source,
+                        name = link.name ?: "",
+                        url = link.url
+                    ) {
+                        this.referer = link.referer
+                        this.quality = link.quality
+                        this.isM3u8 = link.isM3u8
+                        this.headers = link.headers ?: emptyMap()
+                    }
+                )
             }
         }
-
-        return true
     }
+
+    return true
+}
 
     val allAnime = Regex("""panneauAnime\(\"(.*)\)\;""")
     private fun List<Element>.tryTofindLatestSeason(): Pair<String?, String?> {
