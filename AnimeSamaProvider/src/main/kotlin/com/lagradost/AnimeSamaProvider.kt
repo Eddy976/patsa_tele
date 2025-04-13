@@ -587,14 +587,19 @@ class AnimeSamaProvider : MainAPI() {
             if (!playerUrl.isBlank()) loadExtractor(
                 httpsify(playerUrl), playerUrl, subtitleCallback
             ) { link ->
-                callback.invoke(
-                    newExtractorLink(
-                        link.source,
-                        link.name + "",
-                        link.url,
-                      
-                    )
-                )
+               callback.invoke(
+    newExtractorLink(
+        source = link.source,
+        name = link.name ?: "",
+        url = link.url
+    ) {
+        this.referer = link.referer
+        this.quality = link.quality
+        this.isM3u8 = link.isM3u8
+        this.headers = link.headers ?: emptyMap()
+    }
+)
+
             }
         }
 
