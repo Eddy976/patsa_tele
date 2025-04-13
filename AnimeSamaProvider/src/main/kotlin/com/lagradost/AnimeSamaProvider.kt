@@ -588,7 +588,7 @@ class AnimeSamaProvider : MainAPI() {
                 httpsify(playerUrl), playerUrl, subtitleCallback
             ) { link ->
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         link.source,
                         link.name + "",
                         link.url,
