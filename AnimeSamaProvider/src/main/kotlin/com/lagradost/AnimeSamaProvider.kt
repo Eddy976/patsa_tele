@@ -42,7 +42,117 @@ class AnimeSamaProvider : MainAPI() {
 
         return allResults
     }
+override suspend fun load(url: String): LoadResponse {
+    var targetUrl = url
+    if (url.contains("*")) {
+        val (latestLink, _) = avoidCloudflare(
+            url.replace("*", "")
+        ).document.select("div.flex.flex-wrap > script")
+            .tryTofindLatestSeason()
 
+        targetUrl = url.replace("*", "/") + latestLink.toString()
+    }
+
+    val subEpisodes = ArrayList<Episode>()
+    val dubEpisodes = ArrayList<Episode>()
+    val cata = regexCatalogue.find(targetUrl)!!.groupValues[0]
+    val html = avoidCloudflare(targetUrl)
+    val document = html.document
+
+    val linkBack = mainUrl + cata
+    val htmlBack = avoidCloudflare(linkBack)
+    val documentBack = htmlBack.document
+    val description = documentBack.select("p.text-sm")[0].text()
+    val poster = document.select("img#imgOeuvre").attr("src")
+    var title = document.select("h3#titreOeuvre").text()
+    var status = false
+    var urlSubDub = ""
+    var htmlSubDub: NiceResponse? = null
+
+    if (targetUrl.contains("/vostfr")) {
+        urlSubDub = targetUrl.replace("/vostfr", "/vf")
+        htmlSubDub = avoidCloudflare(urlSubDub)
+    } else if (targetUrl.contains("/vf")) {
+        urlSubDub = targetUrl.replace("/vf", "/vostfr")
+        htmlSubDub = avoidCloudflare(urlSubDub)
+    }
+
+    if (targetUrl.lowercase().contains("vostfr")) {
+        listOf("SUB", "DUB").apmap {
+            when (it) {
+                "SUB" -> {
+                    subEpisodes.getEpisodes(html, targetUrl)
+                    if (subEpisodes.isEmpty()) status = true
+                }
+                "DUB" -> {
+                    if (htmlSubDub!!.document.select("h3#titreOeuvre").text() != "") {
+                        dubEpisodes.getEpisodes(htmlSubDub, urlSubDub)
+                        if (dubEpisodes.isNotEmpty()) {
+                            title = title.replace("VOSTFR", "").replace("VF", "")
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        listOf("SUB", "DUB").apmap {
+            when (it) {
+                "SUB" -> {
+                    if (htmlSubDub!!.document.select("h3#titreOeuvre").text() != "") {
+                        subEpisodes.getEpisodes(htmlSubDub, urlSubDub)
+                        if (subEpisodes.isNotEmpty()) {
+                            title = title.replace("VOSTFR", "").replace("VF", "")
+                        }
+                    }
+                }
+                "DUB" -> {
+                    dubEpisodes.getEpisodes(html, targetUrl)
+                    if (dubEpisodes.isEmpty()) status = true
+                }
+            }
+        }
+    }
+
+    listOf(dubEpisodes, subEpisodes).apmap {
+        it.apmap { episode ->
+            episode.posterUrl = poster
+        }
+    }
+
+    val allresultshome: MutableList<SearchResponse> = mutableListOf()
+    val recommendations = documentBack.select("div.flex.flex-wrap > script")
+    allAnime.findAll(recommendations.toString()).forEach {
+        val text = it.groupValues[1]
+        if (!text.contains("nom\",")) {
+            val tvtype = if (text.lowercase().contains("film")) TvType.AnimeMovie else TvType.Anime
+            val titleRec = text.split(",")[0].replace("\"", "").trim()
+            val urlRec = linkBack + text.split(",")[1].replace("\"", "").trim()
+
+            val res = newAnimeSearchResponse(
+                titleRec,
+                urlRec,
+                tvtype,
+                false
+            ) {
+                this.posterUrl = poster
+            }
+            allresultshome.add(res)
+        }
+    }
+
+    return newAnimeLoadResponse(
+        title,
+        targetUrl,
+        TvType.Anime,
+    ) {
+        posterUrl = poster
+        this.plot = description
+        this.recommendations = allresultshome
+        if (subEpisodes.isNotEmpty()) addEpisodes(DubStatus.Subbed, subEpisodes)
+        if (dubEpisodes.isNotEmpty()) addEpisodes(DubStatus.Dubbed, dubEpisodes)
+        this.comingSoon = status
+    }
+}
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
