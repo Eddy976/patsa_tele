@@ -49,7 +49,7 @@ class AnimeSamaProvider : MainAPI() {
         val title = text
         val link_on_click = this.attr("onclick")
         val link =
-            regexGetlink.find(link_on_click)?.groupValues?.get(1) ?: throw ErrorLoadingException()
+            regexGetlink.find(link_on_click)?.groupValues?.get(1) ?: throw ErroringException()
         val dubstatus = if (title.lowercase().contains("vostfr")) {
             EnumSet.of(DubStatus.Subbed)
         } else {
@@ -460,43 +460,42 @@ class AnimeSamaProvider : MainAPI() {
     }
 
     private val regexCatalogue = Regex("""\/catalogue\/([^\/]*)\/""")
-    override suspend fun load(url: String): LoadResponse {
+  override suspend fun load(url: String): LoadResponse {
         var targetUrl = url
         if (url.contains("*")) {
-            val (link, _) = avoidCloudflare(
-                url.replace(
-                    "*",
-                    ""
-                )
+            val (latestLink, _) = avoidCloudflare(
+                url.replace("*", "")
             ).document.select("div.flex.flex-wrap > script")
                 .tryTofindLatestSeason()
-            targetUrl = url.replace("*", "/") + link.toString()
 
+            targetUrl = url.replace("*", "/") + latestLink.toString()
         }
+
         val subEpisodes = ArrayList<Episode>()
         val dubEpisodes = ArrayList<Episode>()
         val cata = regexCatalogue.find(targetUrl)!!.groupValues[0]
-        val html = avoidCloudflare(targetUrl)//app.get(targetUrl)
+        val html = avoidCloudflare(targetUrl)
         val document = html.document
 
         val linkBack = mainUrl + cata
-        val htmlBack = avoidCloudflare(linkBack)//app.get(linkBack)
+        val htmlBack = avoidCloudflare(linkBack)
         val documentBack = htmlBack.document
         val description = documentBack.select("p.text-sm")[0].text()
         val poster = document.select("img#imgOeuvre").attr("src")
         var title = document.select("h3#titreOeuvre").text()
         var status = false
-        var urlSubDub = "" // findlinkforSuborDub(htmlBack, targetUrl)
+        var urlSubDub = ""
         var htmlSubDub: NiceResponse? = null
+
         if (targetUrl.contains("/vostfr")) {
             urlSubDub = targetUrl.replace("/vostfr", "/vf")
-            htmlSubDub = avoidCloudflare(urlSubDub)//app.get(urlSubDub)
+            htmlSubDub = avoidCloudflare(urlSubDub)
         } else if (targetUrl.contains("/vf")) {
             urlSubDub = targetUrl.replace("/vf", "/vostfr")
-            htmlSubDub = avoidCloudflare(urlSubDub)//app.get(urlSubDub)
+            htmlSubDub = avoidCloudflare(urlSubDub)
         }
-        if (targetUrl.lowercase().contains("vostfr")) {
 
+        if (targetUrl.lowercase().contains("vostfr")) {
             listOf("SUB", "DUB").apmap {
                 if (it == "SUB") {
                     subEpisodes.getEpisodes(html, targetUrl)
@@ -516,42 +515,40 @@ class AnimeSamaProvider : MainAPI() {
                     if (subEpisodes.isNotEmpty()) {
                         title = title.replace("VOSTFR", "").replace("VF", "")
                     }
-
                 }
                 if (it == "DUB") {
                     dubEpisodes.getEpisodes(html, targetUrl)
                     if (dubEpisodes.isEmpty()) status = true
                 }
             }
-
         }
 
         listOf(dubEpisodes, subEpisodes).apmap {
             it.apmap { episode ->
-                episode.posterUrl = poster//episode.data.findPosterfromEmbedUrl()
+                episode.posterUrl = poster
             }
         }
+
         val allresultshome: MutableList<SearchResponse> = mutableListOf()
         val recommendations = documentBack.select("div.flex.flex-wrap > script")
         allAnime.findAll(recommendations.toString()).forEach {
             val text = it.groupValues[1]
             if (!text.contains("nom\",")) {
-                var tvtype = TvType.Anime
-                if (text.lowercase().contains("film")) {
-                    tvtype = TvType.AnimeMovie
-                }
-                val linkofAnime = linkBack + text.split(",")[1].replace("\"", "").trim()
-                allresultshome.add(newAnimeSearchResponse(
-                    text.split(",")[0].replace("\"", "").trim(),
-                    linkofAnime,
+                val tvtype = if (text.lowercase().contains("film")) TvType.AnimeMovie else TvType.Anime
+                val titleRec = text.split(",")[0].replace("\"", "").trim()
+                val urlRec = linkBack + text.split(",")[1].replace("\"", "").trim()
+
+                val res = newAnimeSearchResponse(
+                    titleRec,
+                    urlRec,
                     tvtype,
-                    false,
+                    false
                 ) {
                     this.posterUrl = poster
-                })
+                }
+                allresultshome.add(res)
             }
         }
-
 
         return newAnimeLoadResponse(
             title,
@@ -565,7 +562,6 @@ class AnimeSamaProvider : MainAPI() {
             if (dubEpisodes.isNotEmpty()) addEpisodes(DubStatus.Dubbed, dubEpisodes)
             this.comingSoon = status
         }
-
     }
 
 
