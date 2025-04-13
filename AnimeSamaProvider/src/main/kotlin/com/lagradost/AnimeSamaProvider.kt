@@ -49,7 +49,7 @@ class AnimeSamaProvider : MainAPI() {
         val title = text
         val link_on_click = this.attr("onclick")
         val link =
-            regexGetlink.find(link_on_click)?.groupValues?.get(1) ?: throw ErroringException()
+            regexGetlink.find(link_on_click)?.groupValues?.get(1) ?: throw ErrorLoadingException()
         val dubstatus = if (title.lowercase().contains("vostfr")) {
             EnumSet.of(DubStatus.Subbed)
         } else {
