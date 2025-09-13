@@ -16,6 +16,17 @@ buildscript {
         // Cloudstream gradle plugin which makes everything work and builds plugins
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
+   // Existing deps...
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.2")  // For @JsonProperty
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")     // For kotlinx.coroutines (runBlocking, etc.)
+    implementation("me.xdrop:fuzzywuzzy:1.4.0")                                 // For FuzzySearch (fuzzy matching)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")     // If using serialization (optional, but common)
+
+    // For auth/sync APIs (if custom—ensure CloudStream3 core provides them)
+    implementation(project(":shared"))  // Or whatever the core module is named
+
+    // Test if needed
+    testImplementation("junit:junit:4.13.2")
     }
 }
 
