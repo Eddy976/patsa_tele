@@ -5,18 +5,20 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.syncproviders.AuthAPI
 import com.lagradost.cloudstream3.syncproviders.AuthManager
 import com.lagradost.cloudstream3.syncproviders.AuthUser
+import com.lagradost.cloudstream3.syncproviders.LoginInfo
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.xdrop.fuzzywuzzy.FuzzySearch
 import okhttp3.Interceptor
 import java.lang.Math.ceil
 
-// Data classes pour parsing JSON
+// Data classes pour parsing JSON (null-safe)
 data class Js_category(
-    val id: String,
-    val title: String,
+    val id: String?,
+    val title: String?,
     @JsonProperty("tags") val tags: List<String>? = null
 )
 
@@ -94,7 +96,7 @@ data class Channel(
     var series: ArrayList<String> = arrayListOf(),
 )
 
-// Fonctions utilitaires manquantes
+// Fonctions utilitaires
 private fun cleanTitle(title: String): String {
     return title.trim().replace("[^A-Za-z0-9 ]".toRegex(), "")
 }
@@ -104,8 +106,7 @@ private fun cleanTitleButKeepNumber(title: String): String {
 }
 
 private fun findKeyWord(tags: String?): Boolean {
-    // Adaptez selon besoin, ex. : recherche de mots-clés spécifiques
-    return tags?.contains("EN", true) ?: false  // Exemple pour anglais
+    return tags?.contains("EN", true) ?: false  // Adaptez (ex. : tags pour filtrage)
 }
 
 private fun getFlag(title: String): String {
@@ -119,22 +120,21 @@ private fun getFlag(title: String): String {
 class MacIptvAPI : AuthAPI() {
     override val name = "MacIPTV"
     override val idPrefix = "maciptv"
-    override val icon = R.drawable.ic_player_play  // Remplacez par votre icône
-    override val requiresUsername = true  // Pour MAC
-    override val requiresPassword = true  // Pour token
-    override val requiresServer = true  // Pour URL serveur
-    override val createAccountUrl = "https://example.com/register"  // Adaptez
+    override val icon = R.drawable.ic_player_play  // Remplacez par icône IPTV
+    override val requiresUsername = true  // MAC
+    override val requiresPassword = true  // Token
+    override val requiresServer = true  // URL serveur
+    override val createAccountUrl = "https://example.com/register"  // Lien d'inscription si applicable
 
     override suspend fun getLatestLoginData(): AuthUser? {
-        // Récupérez depuis prefs ou stockage local
         val mac = loginMac ?: return null
         val token = companionName ?: return null
         val server = overrideUrl ?: return null
-        return AuthUser(id = 1, name = mac, email = token, profilePicture = null)
+        return AuthUser(id = 1, name = mac, email = token, profilePicture = null, extra = mapOf("server" to server))
     }
 
-    override fun loginInfo(): com.lagradost.cloudstream3.syncproviders.LoginInfo {
-        return com.lagradost.cloudstream3.syncproviders.LoginInfo(
+    override fun loginInfo(): LoginInfo {
+        return LoginInfo(
             username = loginMac ?: "",
             password = companionName ?: "",
             extra = mapOf("server" to (overrideUrl ?: ""))
@@ -142,13 +142,16 @@ class MacIptvAPI : AuthAPI() {
     }
 
     override suspend fun login(username: String, password: String, extra: Map<String, String>?): AuthUser {
-        val server = extra?.get("server") ?: ""
-        // Logique de login : valider MAC/token avec API
+        val server = extra?.get("server") ?: throw ErrorLoadingException("Serveur requis")
+        // Logique de validation MAC/token (appelez API si besoin)
         loginMac = username
         companionName = password
         overrideUrl = server
-        getkey(username)  // Appel à votre fonction getkey
-        return AuthUser(id = 1, name = username, email = password, profilePicture = null)
+        // Appel à getkey pour token
+        withContext(Dispatchers.IO) {
+            getkey(username)  // Assurez-vous que getkey est accessible
+        }
+        return AuthUser(id = 1, name = username, email = password, profilePicture = null, extra = mapOf("server" to server))
     }
 
     override suspend fun logOut() {
@@ -163,13 +166,31 @@ class MacIptvAPI : AuthAPI() {
         var overrideUrl: String? = null
         var loginMac: String? = null
         var companionName: String? = null
+        var key: String? = null  // Partagé si besoin
     }
 }
 
 class TagsMacIptvAPI : AuthAPI() {
-    // Dupliquez la logique de MacIptvAPI ou fusionnez si possible
     override val name = "Tags MacIPTV"
-    // ... (même implémentation que MacIptvAPI, adaptez si différent)
+    override val idPrefix = "tagsmaciptv"
+    override val icon = R.drawable.ic_player_play
+    override val requiresUsername = true
+    override val requiresPassword = true
+    override val requiresServer = true
+    override val createAccountUrl = "https://example.com/register"
+
+    // Dupliquez la logique de MacIptvAPI (adaptez pour tags si différent)
+    override suspend fun getLatestLoginData(): AuthUser? = MacIptvAPI().getLatestLoginData()
+
+    override fun loginInfo(): LoginInfo = MacIptvAPI().loginInfo()
+
+    override suspend fun login(username: String, password: String, extra: Map<String, String>?): AuthUser {
+        return MacIptvAPI().login(username, password, extra)
+    }
+
+    override suspend fun logOut() {
+        MacIptvAPI().logOut()
+    }
 }
 
 class MacIPTVProvider : MainAPI() {
@@ -182,25 +203,23 @@ class MacIPTVProvider : MainAPI() {
     override var lang = "en"
     override var supportedTypes = setOf(TvType.Live, TvType.Movie, TvType.TvSeries, TvType.Anime)
     private var isNotInit = true
-    private var key: String? = ""
     private var allCategory = listOf<String>()
     private var helpVid: String = ""
     private var helpTag: String = ""
     private var helpAcc: String = ""
+    private var headerMac: Map<String, String> = emptyMap()  // Initialisé dans getAuthHeader
 
     init {
         defaultname = "Test-Account $Basename "
         name = Basename
     }
 
-    // ... (companion object déplacé vers MacIptvAPI, mais si besoin ici, dupliquez)
-
     private fun List<Js_category>.getGenreNCategoriesInit(section: String): List<MainPageData> {
         allCategory = allCategory + ("|\uD83C\uDD70\uD83C\uDD7B\uD83C\uDD7B $section \uD83C\uDDF9\u200B\u200B\u200B\u200B\u200B\uD83C\uDDE6\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEC\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF8\u200B\u200B\u200B\u200B\u200B|")
         var allCat = listOf<String>()
         val result = this.mapNotNull { js: Js_category ->
-            val idGenre = js.id.toString()
-            val categoryTitle = js.title.toString()
+            val idGenre = js.id ?: return@mapNotNull null
+            val categoryTitle = js.title ?: return@mapNotNull null
             cleanTitle(
                 categoryTitle.replace("&", "").replace(",", "").replace(":", "")
                     .replace("#", "").replace("|", "").replace("*", "").replace("/", "")
@@ -213,7 +232,7 @@ class MacIPTVProvider : MainAPI() {
             }
 
             if (idGenre.contains("""\d+""".toRegex()) && categoryTitle.uppercase()
-                    .contains(findKeyWord(js.tags?.toString()))
+                    .contains(findKeyWord(js.tags?.joinToString()))
             ) {
                 val nameGenre = cleanTitle(getFlag(categoryTitle)).trim()
 
@@ -227,24 +246,21 @@ class MacIPTVProvider : MainAPI() {
     }
 
     private fun accountInfoNotGood(url: String, mac: String?): Boolean {
-        return url.uppercase().trim() == "NONE" || url.isBlank() || mac?.uppercase()
-            ?.trim() == "NONE" || mac.isNullOrBlank()
+        return url.uppercase().trim() == "NONE" || url.isBlank() || mac?.uppercase()?.trim() == "NONE" || mac.isNullOrBlank()
     }
 
     private suspend fun getkey(mac: String) {
-        val adresseMac = if (!mac.contains("mac=")) {
-            "mac=$mac"
-        } else {
-            mac
-        }
+        val adresseMac = if (!mac.contains("mac=")) "mac=$mac" else mac
         val url_key = "$mainUrl/portal.php?type=stb&action=handshake&token=&JsHttpRequest=1-xml"
-        val reponseGetkey = app.get(
-            url_key, headers = mapOf(
-                "Cookie" to adresseMac,
-                "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
-                "X-User-Agent" to "Model: MAG250; Link: WiFi",
+        val reponseGetkey = withContext(Dispatchers.IO) {
+            app.get(
+                url_key, headers = mapOf(
+                    "Cookie" to adresseMac,
+                    "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
+                    "X-User-Agent" to "Model: MAG250; Link: WiFi",
+                )
             )
-        )
+        }
         key = tryParseJson<Getkey>(
             Regex("""\{\"js\"(.*[\r\n]*)+\}""").find(reponseGetkey.text)?.groupValues?.get(0)
         )?.js?.token ?: ""
@@ -252,31 +268,31 @@ class MacIPTVProvider : MainAPI() {
 
     private suspend fun getAuthHeader() {
         tags = tags ?: ""
-        if (tags?.uppercase()?.trim() == "NONE" || tags?.isBlank() == true) tags = ".*"
-        tags = tags?.uppercase()
-        mainUrl = overrideUrl ?: defaultmainUrl
+        if (tags.uppercase().trim() == "NONE" || tags.isBlank()) tags = ".*"
+        tags = tags.uppercase()
+        mainUrl = MacIptvAPI.overrideUrl ?: defaultmainUrl
         mainUrl = when {
             mainUrl.endsWith("/c/") -> mainUrl.dropLast(3)
             mainUrl.endsWith("/c") -> mainUrl.dropLast(2)
             mainUrl.endsWith("/") -> mainUrl.dropLast(1)
             else -> mainUrl
         }
-        val isNotGood = accountInfoNotGood(mainUrl, loginMac)
+        val isNotGood = accountInfoNotGood(mainUrl, MacIptvAPI.loginMac)
         if (isNotGood) {
             mainUrl = defaultmainUrl
             name = defaultname
         } else {
-            name = ("$companionName $Basename") + " |${lang.uppercase()}|"
-            defaulmacAdresse = "mac=$loginMac"
+            name = ("${MacIptvAPI.companionName} $Basename") + " |${lang.uppercase()}|"
+            defaulmacAdresse = "mac=${MacIptvAPI.loginMac}"
         }
         headerMac = when {
             isNotGood -> {
                 getkey(defaulmacAdresse)
-                if (key?.isNotBlank() == true) {
+                if (MacIptvAPI.key?.isNotBlank() == true) {
                     mutableMapOf(
                         "Cookie" to defaulmacAdresse,
                         "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
-                        "Authorization" to "Bearer $key",
+                        "Authorization" to "Bearer ${MacIptvAPI.key}",
                         "X-User-Agent" to "Model: MAG250; Link: WiFi",
                     )
                 } else {
@@ -288,27 +304,29 @@ class MacIPTVProvider : MainAPI() {
                 }
             }
             else -> {
-                getkey(loginMac.toString())
-                if (key?.isNotBlank() == true) {
+                getkey(MacIptvAPI.loginMac.toString())
+                if (MacIptvAPI.key?.isNotBlank() == true) {
                     mutableMapOf(
-                        "Cookie" to "mac=$loginMac",
+                        "Cookie" to "mac=${MacIptvAPI.loginMac}",
                         "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
-                        "Authorization" to "Bearer $key",
+                        "Authorization" to "Bearer ${MacIptvAPI.key}",
                         "X-User-Agent" to "Model: MAG250; Link: WiFi",
                     )
                 } else {
                     mutableMapOf(
-                        "Cookie" to "mac=$loginMac",
+                        "Cookie" to "mac=${MacIptvAPI.loginMac}",
                         "User-Agent" to "Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 (KHTML, like Gecko) MAG200 stbapp ver: 2 rev: 250 Safari/533.3",
                         "X-User-Agent" to "Model: MAG250; Link: WiFi",
                     )
                 }
             }
         }
-        app.get(
-            "$mainUrl/portal.php?type=stb&action=get_modules",
-            headers = headerMac
-        )
+        withContext(Dispatchers.IO) {
+            app.get(
+                "$mainUrl/portal.php?type=stb&action=get_modules",
+                headers = headerMac
+            )
+        }
 
         listOf(
             "https://github.com/Eddy976/cloudstream-extensions-eddy/issues/4",
@@ -316,9 +334,9 @@ class MacIPTVProvider : MainAPI() {
             "https://github.com/Eddy976/cloudstream-extensions-eddy/issues/2",
         ).apmap { url ->
             when (url.takeLast(1)) {
-                "4" -> helpVid = app.get(url).document.select("video").attr("src")
-                "3" -> helpTag = app.get(url).document.select("video").attr("src")
-                "2" -> helpAcc = app.get(url).document.select("video").attr("src")
+                "4" -> helpVid = withContext(Dispatchers.IO) { app.get(url).document.select("video").attr("src") }
+                "3" -> helpTag = withContext(Dispatchers.IO) { app.get(url).document.select("video").attr("src") }
+                "2" -> helpAcc = withContext(Dispatchers.IO) { app.get(url).document.select("video").attr("src") }
                 else -> ""
             }
         }
@@ -338,25 +356,27 @@ class MacIPTVProvider : MainAPI() {
                 val url = "$mainUrl/portal.php?type=itv&action=get_all_channels"
                 tryParseJson<RootITV>(
                     rgxFindJson.find(
-                        app.get(url, headers = headerMac).text
+                        withContext(Dispatchers.IO) { app.get(url, headers = headerMac).text }
                     )?.groupValues?.get(0)
                 )?.js?.data?.forEach { data ->
-                    if (FuzzySearch.ratio(
-                            cleanTitleButKeepNumber(data.name.toString()).lowercase(),
-                            rquery.lowercase()
-                        ) > 40
-                    ) {
-                        res += sequenceOf(
-                            Channel(
-                                data.name.toString(),
-                                "http://localhost/ch/${data.id}" + "_",
-                                data.logo?.replace("""\""", ""),
-                                "",
-                                data.id,
-                                data.tvGenreId,
-                                data.cmds?.firstOrNull()?.chId
-                            ).toJson()
-                        )
+                    data?.let { d ->
+                        if (FuzzySearch.ratio(
+                                cleanTitleButKeepNumber(d.name ?: "").lowercase(),
+                                rquery.lowercase()
+                            ) > 40
+                        ) {
+                            res += sequenceOf(
+                                Channel(
+                                    d.name ?: "",
+                                    "http://localhost/ch/${d.id}" + "_",
+                                    d.logo?.replace("""\""", ""),
+                                    "",
+                                    d.id,
+                                    d.tvGenreId,
+                                    d.cmds?.firstOrNull()?.chId
+                                ).toJson()
+                            )
+                        }
                     }
                 }
                 List(2) { it + 1 }.apmap {
@@ -366,66 +386,65 @@ class MacIPTVProvider : MainAPI() {
                     ).apmap { url ->
                         tryParseJson<RootVoDnSeries>(
                             rgxFindJson.find(
-                                app.get(
-                                    url,
-                                    headers = headerMac
-                                ).text
+                                withContext(Dispatchers.IO) {
+                                    app.get(
+                                        url,
+                                        headers = headerMac
+                                    ).text
+                                }
                             )?.groupValues?.get(0)
                         )?.js?.data?.forEach { data ->
-                            val isMovie: String
-                            val namedata = if (url.contains("type=vod")) {
-                                isMovie = "&vod"
-                                data.name.toString()
-                            } else {
-                                isMovie = "&series"
-                                data.path.toString()
+                            data?.let { d ->
+                                val isMovie: String = if (url.contains("type=vod")) "&vod" else "&series"
+                                val namedata = if (url.contains("type=vod")) (d.name ?: "") else (d.path ?: "")
+                                res += sequenceOf(
+                                    Channel(
+                                        namedata,
+                                        d.cmd ?: "",
+                                        d.screenshotUri?.replace("""\""", ""),
+                                        "",
+                                        d.id,
+                                        d.categoryId,
+                                        d.id,
+                                        d.description,
+                                        d.actors?.joinToString(),
+                                        if ((d.year?.split("-")?.isNotEmpty() == true)) {
+                                            d.year!!.split("-")[0]
+                                        } else {
+                                            d.year
+                                        },
+                                        d.ratingIm?.toString(),
+                                        if (url.contains("type=vod")) 1 else 0,
+                                        d.genresStr,
+                                        d.series?.map { it.title ?: "" } as ArrayList<String>,
+                                    ).toJson()
+                                )
                             }
-                            res += sequenceOf(
-                                Channel(
-                                    namedata,
-                                    data.cmd.toString(),
-                                    data.screenshotUri?.replace("""\""", ""),
-                                    "",
-                                    data.id,
-                                    data.categoryId,
-                                    data.id,
-                                    data.description,
-                                    data.actors?.joinToString(),
-                                    if (data.year?.split("-")?.isNotEmpty() == true) {
-                                        data.year!!.split("-")[0]
-                                    } else {
-                                        data.year ?: null
-                                    },
-                                    data.ratingIm?.toString(),
-                                    if (url.contains("type=vod")) 1 else 0,
-                                    data.genresStr,
-                                    data.series?.map { it.title ?: "" } as ArrayList<String>,
-                                ).toJson()
-                            )
                         }
                     }
                 }
             }
-            // ... (autres cas similaires, avec corrections pour null safety)
             "itv" -> {
                 val url = "$mainUrl/portal.php?type=itv&action=get_all_channels"
                 tryParseJson<RootITV>(
                     rgxFindJson.find(
-                        app.get(url, headers = headerMac).text
+                        withContext(Dispatchers.IO) { app.get(url, headers = headerMac).text }
                     )?.groupValues?.get(0)
                 )?.js?.data?.forEach { data ->
-                    if (data.tvGenreId == idGenre) {
-                        res += sequenceOf(
-                            Channel(
-                                data.name.toString(),
-                                "http://localhost/ch/${data.id}" + "_",
-                                data.logo?.replace("""\""", ""),
-                                "",
-                                data.id,
-                                data.tvGenreId,
-                                data.cmds?.firstOrNull()?.chId
-                            ).toJson()
-                        )
+                    data?.let { d ->
+                        if (d.tvGenreId == idGenre) {
+                            res += sequenceOf(
+                                Channel(
+                                    d.name ?: "",
+                                    "http://localhost/ch/${d.id}" + "_",
+                                    d.logo?.replace("""\""", ""),
+                                    "",
+                                    d.id,
+                                    d.tvGenreId,
+                                    d.cmds?.firstOrNull()?.chId
+                                ).toJson()
+                            )
+                        }
                     }
                 }
             }
@@ -433,37 +452,39 @@ class MacIPTVProvider : MainAPI() {
                 val url = "$mainUrl/portal.php?type=$type&action=get_ordered_list&category=$idGenre&movie_id=0&season_id=0&episode_id=0&p=1&sortby=added"
                 val getJs = tryParseJson<RootVoDnSeries>(
                     rgxFindJson.find(
-                        app.get(url, headers = headerMac).text
+                        withContext(Dispatchers.IO) { app.get(url, headers = headerMac).text }
                     )?.groupValues?.get(0)
                 )?.js
-                val x = getJs?.totalItems?.toDouble()?.div(getJs.maxPageItems ?: 1) ?: 1.0
+                val x = getJs?.totalItems?.toDouble()?.div(getJs.maxPageItems?.toDouble() ?: 1.0) ?: 1.0
                 when (load) {
                     true -> {
                         getJs?.data?.forEach { data ->
-                            val isMovie: Int = if (type == "vod") 1 else 0
-                            val namedata = if (type == "vod") data.name.toString() else data.path.toString()
-                            res += sequenceOf(
-                                Channel(
-                                    namedata,
-                                    data.cmd.toString(),
-                                    data.screenshotUri?.replace("""\""", ""),
-                                    "",
-                                    data.id,
-                                    data.categoryId,
-                                    data.id,
-                                    data.description,
-                                    data.actors?.joinToString(),
-                                    if (data.year?.split("-")?.isNotEmpty() == true) {
-                                        data.year!!.split("-")[0]
-                                    } else {
-                                        data.year
-                                    },
-                                    data.ratingIm?.toString(),
-                                    isMovie,
-                                    data.genresStr,
-                                    data.series?.map { it.title ?: "" } as ArrayList<String>,
-                                ).toJson()
-                            )
+                            data?.let { d ->
+                                val isMovie: Int = if (type == "vod") 1 else 0
+                                val namedata = if (type == "vod") (d.name ?: "") else (d.path ?: "")
+                                res += sequenceOf(
+                                    Channel(
+                                        namedata,
+                                        d.cmd ?: "",
+                                        d.screenshotUri?.replace("""\""", ""),
+                                        "",
+                                        d.id,
+                                        d.categoryId,
+                                        d.id,
+                                        d.description,
+                                        d.actors?.joinToString(),
+                                        if (d.year?.split("-")?.isNotEmpty() == true) {
+                                            d.year!!.split("-")[0]
+                                        } else {
+                                            d.year
+                                        },
+                                        d.ratingIm?.toString(),
+                                        isMovie,
+                                        d.genresStr,
+                                        d.series?.map { it.title ?: "" } as ArrayList<String>,
+                                    ).toJson()
+                                )
+                            }
                         }
                     }
                     else -> {
@@ -471,36 +492,40 @@ class MacIPTVProvider : MainAPI() {
                         List(takeN) { it + 1 }.apmap {
                             tryParseJson<RootVoDnSeries>(
                                 rgxFindJson.find(
-                                    app.get(
-                                        "$mainUrl/portal.php?type=$type&action=get_ordered_list&category=$idGenre&movie_id=0&season_id=0&episode_id=0&p=$it&sortby=added",
-                                        headers = headerMac
-                                    ).text
+                                    withContext(Dispatchers.IO) {
+                                        app.get(
+                                            "$mainUrl/portal.php?type=$type&action=get_ordered_list&category=$idGenre&movie_id=0&season_id=0&episode_id=0&p=$it&sortby=added",
+                                            headers = headerMac
+                                        ).text
+                                    }
                                 )?.groupValues?.get(0)
                             )?.js?.data?.forEach { data ->
-                                val isMovie: Int = if (type == "vod") 1 else 0
-                                val namedata = if (type == "vod") data.name.toString() else data.path.toString()
-                                res += sequenceOf(
-                                    Channel(
-                                        namedata,
-                                        data.cmd.toString(),
-                                        data.screenshotUri?.replace("""\""", ""),
-                                        "",
-                                        data.id,
-                                        data.categoryId,
-                                        data.id,
-                                        data.description,
-                                        data.actors?.joinToString(),
-                                        if (data.year?.split("-")?.isNotEmpty() == true) {
-                                            data.year!!.split("-")[0]
-                                        } else {
-                                            data.year
-                                        },
-                                        data.ratingIm?.toString(),
-                                        isMovie,
-                                        data.genresStr,
-                                        data.series?.map { it.title ?: "" } as ArrayList<String>,
-                                    ).toJson()
-                                )
+                                data?.let { d ->
+                                    val isMovie: Int = if (type == "vod") 1 else 0
+                                    val namedata = if (type == "vod") (d.name ?: "") else (d.path ?: "")
+                                    res += sequenceOf(
+                                        Channel(
+                                            namedata,
+                                            d.cmd ?: "",
+                                            d.screenshotUri?.replace("""\""", ""),
+                                            "",
+                                            d.id,
+                                            d.categoryId,
+                                            d.id,
+                                            d.description,
+                                            d.actors?.joinToString(),
+                                            if (d.year?.split("-")?.isNotEmpty() == true) {
+                                                d.year!!.split("-")[0]
+                                            } else {
+                                                d.year
+                                            },
+                                            d.ratingIm?.toString(),
+                                            isMovie,
+                                            d.genresStr,
+                                            d.series?.map { it.title ?: "" } as ArrayList<String>,
+                                        ).toJson()
+                                    )
+                                }
                             }
                         }
                     }
@@ -510,33 +535,69 @@ class MacIPTVProvider : MainAPI() {
         return res
     }
 
-    // Implémentez override suspend fun search, load, getMainPage, etc., avec contentRating = null
-    // Exemple pour load :
+    // Exemple d'implémentation pour load (adaptez à votre logique IPTV)
     override suspend fun load(url: String): LoadResponse {
-        // Logique...
+        // Ex. : Parsing pour live/TV
+        val channels = createArrayChannel("", "itv")  // Exemple
+        val episodes = channels.map { json ->
+            newEpisode(json) {  // Utilisez newEpisode pour IPTV streams
+                name = parseJson<Channel>(json).title
+            }
+        }
         return newTvSeriesLoadResponse(
-            title = "Exemple",
-            url = url,
-            TvType.TvSeries,
-            episodesList = listOf(),
-            contentRating = null  // Ajouté
+            "IPTV Channel",
+            url,
+            TvType.Live,
+            episodes,
+            contentRating = null
         )
     }
 
-    // ... (complétez les autres overrides avec corrections similaires)
+    // Implémentez search, getMainPage, etc., de manière similaire
+    override suspend fun search(query: String): List<SearchResponse> {
+        val channels = createArrayChannel("", "all", rquery = query)
+        return channels.map { json ->
+            val ch = parseJson<Channel>(json)
+            newMovieSearchResponse(ch.title, ch.url, contentRating = null) {
+                posterUrl = ch.url_image
+            }
+        }
+    }
+
+    override val mainPage = mainPageOf(
+        Pair("Live", "itv"),
+        Pair("VOD", "vod"),
+        Pair("Series", "series")
+    )
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
+        val type = request.name
+        val channels = createArrayChannel("", type)
+        val items = channels.take(20).map { json ->
+            val ch = parseJson<Channel>(json)
+            newLiveSearchResponse(ch.title, ch.url, contentRating = null) {
+                posterUrl = ch.url_image
+            }
+        }
+        return newHomePageResponse(request.name, items)
+    }
 }
 
 class MacIptvSettingsFragment : SettingsFragment() {
     override fun initialize(activity: FragmentActivity) {
         val repo = AuthManager.getDefaultRepo() as? MacIptvAPI ?: return
-        val user = repo.getLatestLoginData(0)  // index = 0
-        // ... (logique)
+        val user = repo.getLatestLoginData()  // Sans index si pas multiple
+        // Logique pour affichage user (ex. : addPreference pour MAC/server)
 
-        // Pour tags :
         val tagsRepo = AuthManager.getDefaultRepo() as? TagsMacIptvAPI ?: return
-        val tagsUser = tagsRepo.getLatestLoginData(0)
-        // ...
+        val tagsUser = tagsRepo.getLatestLoginData()
+        // Logique tags...
     }
 }
 
-// Supprimez ou commentez MacIPTVProviderPlugin si non nécessaire
+// Plugin simplifié (si nécessaire pour extension)
+class MacIPTVProviderPlugin : ProviderPlugin() {
+    override fun load(): List<MainAPI> {
+        return listOf(MacIPTVProvider())
+    }
+}
