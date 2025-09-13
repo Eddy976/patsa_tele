@@ -10,6 +10,8 @@ import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import kotlinx.coroutines.runBlocking
 import me.xdrop.fuzzywuzzy.FuzzySearch
 import java.lang.Math.ceil
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.new
 
 class MacIPTVProvider : MainAPI() {
     private var defaulmacAdresse =
@@ -933,12 +935,11 @@ class MacIPTVProvider : MainAPI() {
     ): Boolean {
         if (data.contains("githubusercontent") && data.contains(".mp4")) {
             callback.invoke(
-                ExtractorLink(
+                newExtractorLink(
                     name,
                     "TUTO",
                     data,
-                    "",
-                    Qualities.Unknown.value,
+         
                 )
             )
             return true
@@ -986,13 +987,13 @@ class MacIPTVProvider : MainAPI() {
         }
         val isM3u8 = false
         callback.invoke(
-            ExtractorLink(
+            newExtractorLink(
                 name,
                 name,
                 lien,
                 mainUrl,
-                Qualities.Unknown.value,
-                isM3u8 = isM3u8,
+    
+                type = ExtractorLinkType.M3U8,
                 headers = head
             )
         )
