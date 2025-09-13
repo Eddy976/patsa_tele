@@ -1,5 +1,5 @@
 package com.lagradost
-
+import com.lagradost.cloudstream3.newEpisode
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.*
 import okhttp3.Interceptor
@@ -786,29 +786,33 @@ class MacIPTVProvider : MainAPI() {
                                     null
                                 }
                                 channel.series.map {
-                                    Episode(
-                                        channel.url + "&series=$it",
-                                        episode = it.toIntOrNull(),
-                                        season = season,
-                                        name = "Episode $it",
-                                        description = channel.description,
-                                        posterUrl = channel.url_image,
-                                        rating = channel.rating?.toIntOrNull()
-
-                                    )
+                
+                                        newEpisode( channel.url + "&series=$it") {
+                            this.apply {
+                                name = "Episode $it"
+                                episode = it.toIntOrNull()
+                                description = channel.description
+                                posterUrl =channel.url_image
+                                this.season = season
+                                rating = channel.rating?.toIntOrNull()
+                            }
+                        }
                                 }
                             }.flatten()
                         val isEmptyEp = episodes.isEmpty()
                         if (isEmptyEp) {
                             episodes = listOf(
-                                Episode(
-                                    dataUrl,
-                                    episode = 1,
-                                    season = null,
-                                    name = "Ⓣⓤⓣⓞ",
-                                    description = "To see all the content of the section (➍➊➒) from movie(code=➊), then go search ➊&➍➊➒. To search  \uD83C\uDDE6\u200B\u200B\u200B\u200B\u200B\uD83C\uDDFB\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF3\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEC\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF7\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF8\u200B\u200B\u200B\u200B\u200B in ➍➊➒ write: ➊&➍➊➒&\uD83C\uDDE6\u200B\u200B\u200B\u200B\u200B\uD83C\uDDFB\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF3\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEC\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF7\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF8\u200B\u200B\u200B\u200B\u200B",
-                                    posterUrl = "https://www.jharkhanditsolutions.com/wp-content/uploads/2020/07/GettyImages-1047578412-692fa117cf86450287d8873eeb1a95c8-aa8d654cec814174a9e07bdae85a1eb7.jpg",
-                                )
+                    
+
+                                     newEpisode(dataUrl) {
+                            this.apply {
+                                name = "Ⓣⓤⓣⓞ"
+                                episode = 1
+                                 description = "To see all the content of the section (➍➊➒) from movie(code=➊), then go search ➊&➍➊➒. To search  \uD83C\uDDE6\u200B\u200B\u200B\u200B\u200B\uD83C\uDDFB\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF3\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEC\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF7\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF8\u200B\u200B\u200B\u200B\u200B in ➍➊➒ write: ➊&➍➊➒&\uD83C\uDDE6\u200B\u200B\u200B\u200B\u200B\uD83C\uDDFB\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF3\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEC\u200B\u200B\u200B\u200B\u200B\uD83C\uDDEA\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF7\u200B\u200B\u200B\u200B\u200B\uD83C\uDDF8\u200B\u200B\u200B\u200B\u200B"
+                                posterUrl = "https://www.jharkhanditsolutions.com/wp-content/uploads/2020/07/GettyImages-1047578412-692fa117cf86450287d8873eeb1a95c8-aa8d654cec814174a9e07bdae85a1eb7.jpg"
+                                this.season = null
+                            }
+                        }
                             )
                         } else {
                             recommendations = null
