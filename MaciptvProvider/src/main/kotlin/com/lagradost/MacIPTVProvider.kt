@@ -14,7 +14,7 @@ class MacIPTVProvider : MainAPI() {
     private var defaulmacAdresse =
         "mac=00:1A:79:bf:f7:db" ///00:1a:79:4c:1b:68"//"mac=00:1A:79:31:ed:e5"//"mac=00:1A:79:28:9C:Be"//"mac=00%3A1a%3A79%3Aae%3A2a%3A30"//
     private val defaultmainUrl = "http://one-tvplus.com:1223/c"//http://hits.gentv.to:8080/c"//"http://nas.bordo1453.be"//"http://infinitymedia.live:8880"//"http://ultra-box.club"//
-    private var defaultname = "OneTvplusIPTV"
+    private var defaultname = "OneTvplusTv"
     private var Basename = "MacIPTV \uD83D\uDCFA"
     override val hasQuickSearch = false
     override val hasMainPage = true
