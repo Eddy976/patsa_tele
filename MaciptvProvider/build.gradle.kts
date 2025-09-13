@@ -25,4 +25,3 @@ cloudstream {
 
     iconUrl = "https://static.vecteezy.com/system/resources/thumbnails/028/799/777/small/television-3d-rendering-icon-illustration-png.png"
 }
-
