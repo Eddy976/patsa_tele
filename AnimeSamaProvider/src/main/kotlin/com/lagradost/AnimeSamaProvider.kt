@@ -1,13 +1,15 @@
 package com.lagradost
+
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.nicehttp.NiceResponse
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 import java.util.*
 import kotlin.collections.ArrayList
-
 
 class AnimeSamaProvider : MainAPI() {
     override var mainUrl = "https://anime-sama.fr"
@@ -28,27 +30,25 @@ class AnimeSamaProvider : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         val allresultshome: MutableList<SearchResponse> = mutableListOf()
         val link = "$mainUrl/template-php/defaut/fetch.php" // search'
-        val document =
+        val document = withContext(Dispatchers.IO) {
             app.post(
                 link,
                 data = mapOf("query" to query)
             ).document // app.get() permet de télécharger la page html avec une requete HTTP (get)
+        }
         val results = document.select("a")
         results.apmap { article ->  // avec mapnotnull si un élément est null, il sera automatiquement enlevé de la liste
             allresultshome.toSearchResponse1(article)
         }
         return allresultshome
-
     }
 
     val regexGetlink = Regex("""(http.*)\'\,""")
     private fun Element.toSearchResponseAll(posterUrl: String?): SearchResponse {
-
         val text = this.text()
         val title = text
         val link_on_click = this.attr("onclick")
-        val link =
-            regexGetlink.find(link_on_click)?.groupValues?.get(1) ?: throw ErrorLoadingException()
+        val link = regexGetlink.find(link_on_click)?.groupValues?.get(1) ?: throw ErrorLoadingException()
         val dubstatus = if (title.lowercase().contains("vostfr")) {
             EnumSet.of(DubStatus.Subbed)
         } else {
@@ -68,11 +68,9 @@ class AnimeSamaProvider : MainAPI() {
             this.posterUrl = posterUrl
             this.dubStatus = dubstatus
         }
-        //}
     }
 
     private fun Element.toSearchResponse_all_rec(posterUrl: String?, link: String): SearchResponse {
-
         val title = this.text()
         val dubstatus = if (title.lowercase().contains("vostfr")) {
             EnumSet.of(DubStatus.Subbed)
@@ -93,7 +91,6 @@ class AnimeSamaProvider : MainAPI() {
             this.posterUrl = posterUrl
             this.dubStatus = dubstatus
         }
-        //}
     }
 
     private suspend fun MutableList<SearchResponse>.toSearchResponse1(element: Element) {
@@ -101,7 +98,9 @@ class AnimeSamaProvider : MainAPI() {
          if (!figcaption.lowercase().trim().contains("scan")) {*/
         val posterUrl = element.select("a>img ").attr("src")
         var link_to_anime = element.select("a").attr("href")
-        val document = avoidCloudflare(link_to_anime).document//app.get(link_to_anime).document
+        val document = withContext(Dispatchers.IO) {
+            avoidCloudflare(link_to_anime).document // app.get(link_to_anime).document
+        }
         val all_anime = document.select("div.flex.flex-wrap > script")
         //all_anime.forEach { saga -> this.add(saga.toSearchResponseAll(posterUrl)) }
         allAnime.findAll(all_anime.toString()).forEach {
@@ -112,18 +111,18 @@ class AnimeSamaProvider : MainAPI() {
                 }
                 val link = link_to_anime + text.split(",")[1].replace("\"", "").trim()
 
-                this.add(newAnimeSearchResponse(
-                    text.split(",")[0].replace("\"", "").trim(),
-                    link,
-                    TvType.Anime,
-                    false,
-                ) {
-                    this.posterUrl = posterUrl
-                }
+                this.add(
+                    newAnimeSearchResponse(
+                        text.split(",")[0].replace("\"", "").trim(),
+                        link,
+                        TvType.Anime,
+                        false,
+                    ) {
+                        this.posterUrl = posterUrl
+                    }
                 )
             }
         }
-
     }
 
     /**
@@ -136,7 +135,6 @@ class AnimeSamaProvider : MainAPI() {
     )
 
     private data class DataForLoop(
-
         var idx_EpSpec: Int, // increment special episode number
         var idx_Ep: Int, // Start loop at episode idx_Ep (nextIdxBeginLoop)
         var idBeginLoop: Int, // Increment for selecting the next idx_Ep
@@ -144,8 +142,7 @@ class AnimeSamaProvider : MainAPI() {
         var idEndLoop: Int, // increment for selecting the next idxEndForLoop
         var nbrEpSpec: Int,
         var results: ResultsForLoop,
-
-        )
+    )
 
     private data class DataSet(
         val isTitleEp: Boolean,
@@ -155,7 +152,6 @@ class AnimeSamaProvider : MainAPI() {
         val allstartForLoop: Sequence<MatchResult>,
         val allEndForLoop: Sequence<MatchResult>,
     )
-
 
     private suspend fun String.findPosterfromEmbedUrl(): String {
         val link_video = this
@@ -167,48 +163,47 @@ class AnimeSamaProvider : MainAPI() {
                     link_video
                 )?.groupValues?.get(0).toString()
 
-
-                link_poster = app.get(
-                    openlink
-                ).document.select("[property=og:image]").attr("content")
-
-
+                link_poster = withContext(Dispatchers.IO) {
+                    app.get(
+                        openlink
+                    ).document.select("[property=og:image]").attr("content")
+                }
             }
             link_video.contains("sendvid") -> {
                 openlink = Regex("""[^']*sendvid[^']*""").find(
                     link_video
                 )?.groupValues?.get(0).toString()
 
-                link_poster = app.get(
-                    openlink
-                ).document.select("[property=og:image]").attr("content")
-
+                link_poster = withContext(Dispatchers.IO) {
+                    app.get(
+                        openlink
+                    ).document.select("[property=og:image]").attr("content")
+                }
             }
             link_video.contains("myvi.top") -> {
                 openlink = Regex("""[^']*myvi\.top[^']*""").find(link_video)?.groupValues?.get(
                     0
                 ).toString()
 
-
-                link_poster = Regex("""([^=]*myvi[^\\]*\.[j]pg[n]*[^\\]*)""").find(
-                    avoidCloudflare(openlink).text//app.get(openlink).text
-                )?.groupValues?.get(1).toString().replace("%2f", "/").replace("%3a", ":")
-                    .replace("%3f", "?").replace("%3d", "=").replace("%26", "&")
-
+                link_poster = withContext(Dispatchers.IO) {
+                    Regex("""([^=]*myvi[^\\]*\.[j]pg[n]*[^\\]*)""").find(
+                        avoidCloudflare(openlink).text // app.get(openlink).text
+                    )?.groupValues?.get(1).toString().replace("%2f", "/").replace("%3a", ":")
+                        .replace("%3f", "?").replace("%3d", "=").replace("%26", "&")
+                }
             }
             link_video.contains("myvi.tv") -> {
                 openlink = Regex("""[^']*myvi\.tv[^']*""").find(link_video)?.groupValues?.get(
                     0
                 ).toString()
 
-
-                link_poster = Regex("""([^=]*myvi[^\\]*\.[j]pg[n]*[^\\]*)""").find(
-                    app.get(openlink).text
-                )?.groupValues?.get(1).toString().replace("%2f", "/").replace("%3a", ":")
-                    .replace("%3f", "?").replace("%3d", "=").replace("%26", "&")
-
+                link_poster = withContext(Dispatchers.IO) {
+                    Regex("""([^=]*myvi[^\\]*\.[j]pg[n]*[^\\]*)""").find(
+                        app.get(openlink).text
+                    )?.groupValues?.get(1).toString().replace("%2f", "/").replace("%3a", ":")
+                        .replace("%3f", "?").replace("%3d", "=").replace("%26", "&")
+                }
             }
-
             link_video.contains("myvi.ru") -> {
                 openlink = Regex("""[^']*myvi\.ru[^']*""").find(link_video)?.groupValues?.get(
                     0
@@ -216,13 +211,13 @@ class AnimeSamaProvider : MainAPI() {
                 if (openlink.contains("http")) {
                     openlink = "http:$openlink"
                 }
-                link_poster = Regex("""([^=]*myvi[^\\]*\.[j]pg[n]*[^\\]*)""").find(
-                    app.get(openlink).text
-                )?.groupValues?.get(1).toString().replace("%2f", "/").replace("%3a", ":")
-                    .replace("%3f", "?").replace("%3d", "=").replace("%26", "&")
-
+                link_poster = withContext(Dispatchers.IO) {
+                    Regex("""([^=]*myvi[^\\]*\.[j]pg[n]*[^\\]*)""").find(
+                        app.get(openlink).text
+                    )?.groupValues?.get(1).toString().replace("%2f", "/").replace("%3a", ":")
+                        .replace("%3f", "?").replace("%3d", "=").replace("%26", "&")
+                }
             }
-
             else -> return link_poster
         }
         return link_poster
@@ -242,14 +237,13 @@ class AnimeSamaProvider : MainAPI() {
         val nextidxEndForLoop: Int
         val nextIdxBeginLoop: Int
         if (dataset.isTitleEp) {
-            episode_tite = dataset.all_title[idx_Ep - 1].text()//
+            episode_tite = dataset.all_title[idx_Ep - 1].text() //
             idx_Ep++
             epNo = null
         } else {
             if ((idx_Ep > idxEndForLoop || nbrEpSpec > 1) && (idBeginLoop + 1) < nbrBeginloop) {
                 if (dataLoop.idx_Ep > dataLoop.idxEndForLoop) {
                     idBeginLoop++
-
 
                     nextIdxBeginLoop =
                         dataset.allstartForLoop.elementAt(idBeginLoop).groupValues.get(1).toInt()
@@ -287,17 +281,14 @@ class AnimeSamaProvider : MainAPI() {
             idEndLoop, // increment for selecting the next idxEndForLoop
             nbrEpSpec, results
         )
-        //}
     }
 
     fun getFlag(sequence: String): String {
-
         val flag: String
         flag = when (true) {
             sequence.uppercase().contains("VF") -> "\uD83C\uDDE8\uD83C\uDDF5"
             sequence.uppercase().contains("VOSTFR") -> "\uD83C\uDDEF\uD83C\uDDF5"
             else -> ""
-
         }
         return flag
     }
@@ -315,7 +306,9 @@ class AnimeSamaProvider : MainAPI() {
         } else {
             "$url$scpritAllEpisode"
         }
-        val getScript = avoidCloudflare(url_scriptEp)//app.get(url_scriptEp)
+        val getScript = withContext(Dispatchers.IO) {
+            avoidCloudflare(url_scriptEp) // app.get(url_scriptEp)
+        }
         val text_script = getScript.text
         val resultsAllContent = regexAllcontentEpisode.findAll(text_script)
         //////////////////////////////////////
@@ -344,17 +337,14 @@ class AnimeSamaProvider : MainAPI() {
                 try {
                     idxEndForLoop = allEndForLoop.elementAt(idEndLoop).groupValues.get(1).toInt()
                     nbrEndloop = allEndForLoop.count()
-
                 } catch (e: Exception) {
                     idxEndForLoop = 150000 // one for loop
                     nbrEndloop = 1
-
                 }
             } else {
                 idxEndForLoop = 1
                 nbrEndloop = 0
             }
-
         } catch (e: Exception) {
             idx_EpStart = 1
             idxEndForLoop = 1
@@ -402,11 +392,10 @@ class AnimeSamaProvider : MainAPI() {
             dataLoop = loopLookingforEpisodeTitle(dataLoop, dataset)
 
             this.add(
-                Episode(
+                newEpisode(
                     data = sumlink,
-                    episode = dataLoop.results.epNo,
                     name = dataLoop.results.episode_tite,
-                    //posterUrl = link_poster
+                    episode = dataLoop.results.epNo,
                 )
             )
             sumlink = ""
@@ -414,10 +403,8 @@ class AnimeSamaProvider : MainAPI() {
     }
 
     private val regexAllcontentEpisode = Regex("""\[[^\]]*]""")
-    private val regexCreateEp =
-        Regex("""creerListe\(([0-9]+)\,""") // Regex("""for[\s]+\(var[\s]+i[\s]+=[\s]+([0-9]+)[\s]*;""")
-    private val regexgetLoopEnd =
-        Regex("""creerListe\([0-9]+\,[\s]*([0-9]+)\)""") // Regex("""i[\s]*<=[\s]*([0-9]+)""")
+    private val regexCreateEp = Regex("""creerListe\(([0-9]+)\,""") // Regex("""for[\s]+\(var[\s]+i[\s]+=[\s]+([0-9]+)[\s]*;""")
+    private val regexgetLoopEnd = Regex("""creerListe\([0-9]+\,[\s]*([0-9]+)\)""") // Regex("""i[\s]*<=[\s]*([0-9]+)""")
 
     fun dropSlachChar(url: String): String {
         return if (url.takeLast(1) == "/") {
@@ -462,24 +449,29 @@ class AnimeSamaProvider : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         var targetUrl = url
         if (url.contains("*")) {
-            val (link, _) = avoidCloudflare(
-                url.replace(
-                    "*",
-                    ""
-                )
-            ).document.select("div.flex.flex-wrap > script")
-                .tryTofindLatestSeason()
+            val (link, _) = withContext(Dispatchers.IO) {
+                avoidCloudflare(
+                    url.replace(
+                        "*",
+                        ""
+                    )
+                ).document.select("div.flex.flex-wrap > script")
+                    .tryTofindLatestSeason()
+            }
             targetUrl = url.replace("*", "/") + link.toString()
-
         }
         val subEpisodes = ArrayList<Episode>()
         val dubEpisodes = ArrayList<Episode>()
         val cata = regexCatalogue.find(targetUrl)!!.groupValues[0]
-        val html = avoidCloudflare(targetUrl)//app.get(targetUrl)
+        val html = withContext(Dispatchers.IO) {
+            avoidCloudflare(targetUrl) // app.get(targetUrl)
+        }
         val document = html.document
 
         val linkBack = mainUrl + cata
-        val htmlBack = avoidCloudflare(linkBack)//app.get(linkBack)
+        val htmlBack = withContext(Dispatchers.IO) {
+            avoidCloudflare(linkBack) // app.get(linkBack)
+        }
         val documentBack = htmlBack.document
         val description = documentBack.select("p.text-sm")[0].text()
         val poster = document.select("img#imgOeuvre").attr("src")
@@ -489,13 +481,16 @@ class AnimeSamaProvider : MainAPI() {
         var htmlSubDub: NiceResponse? = null
         if (targetUrl.contains("/vostfr")) {
             urlSubDub = targetUrl.replace("/vostfr", "/vf")
-            htmlSubDub = avoidCloudflare(urlSubDub)//app.get(urlSubDub)
+            htmlSubDub = withContext(Dispatchers.IO) {
+                avoidCloudflare(urlSubDub) // app.get(urlSubDub)
+            }
         } else if (targetUrl.contains("/vf")) {
             urlSubDub = targetUrl.replace("/vf", "/vostfr")
-            htmlSubDub = avoidCloudflare(urlSubDub)//app.get(urlSubDub)
+            htmlSubDub = withContext(Dispatchers.IO) {
+                avoidCloudflare(urlSubDub) // app.get(urlSubDub)
+            }
         }
         if (targetUrl.lowercase().contains("vostfr")) {
-
             listOf("SUB", "DUB").apmap {
                 if (it == "SUB") {
                     subEpisodes.getEpisodes(html, targetUrl)
@@ -515,19 +510,17 @@ class AnimeSamaProvider : MainAPI() {
                     if (subEpisodes.isNotEmpty()) {
                         title = title.replace("VOSTFR", "").replace("VF", "")
                     }
-
                 }
                 if (it == "DUB") {
                     dubEpisodes.getEpisodes(html, targetUrl)
                     if (dubEpisodes.isEmpty()) status = true
                 }
             }
-
         }
 
         listOf(dubEpisodes, subEpisodes).apmap {
             it.apmap { episode ->
-                episode.posterUrl = poster//episode.data.findPosterfromEmbedUrl()
+                episode.posterUrl = poster // episode.data.findPosterfromEmbedUrl()
             }
         }
         val allresultshome: MutableList<SearchResponse> = mutableListOf()
@@ -540,17 +533,18 @@ class AnimeSamaProvider : MainAPI() {
                     tvtype = TvType.AnimeMovie
                 }
                 val linkofAnime = linkBack + text.split(",")[1].replace("\"", "").trim()
-                allresultshome.add(newAnimeSearchResponse(
-                    text.split(",")[0].replace("\"", "").trim(),
-                    linkofAnime,
-                    tvtype,
-                    false,
-                ) {
-                    this.posterUrl = poster
-                })
+                allresultshome.add(
+                    newAnimeSearchResponse(
+                        text.split(",")[0].replace("\"", "").trim(),
+                        linkofAnime,
+                        tvtype,
+                        false,
+                    ) {
+                        this.posterUrl = poster
+                    }
+                )
             }
         }
-
 
         return newAnimeLoadResponse(
             title,
@@ -564,9 +558,7 @@ class AnimeSamaProvider : MainAPI() {
             if (dubEpisodes.isNotEmpty()) addEpisodes(DubStatus.Dubbed, dubEpisodes)
             this.comingSoon = status
         }
-
     }
-
 
     /** récupere les liens .mp4 ou m3u8 directement à partir du paramètre data généré avec la fonction load()**/
     val rgxGetLink = Regex("""'[^']*',""")
@@ -633,11 +625,10 @@ class AnimeSamaProvider : MainAPI() {
 
                     findAllNumber.findAll(text).toList().apmap { number ->
                         newSumVost += number.groupValues[1].toInt()
-
                     }
                     if (newSumVost >= sumVost) {
                         sumVost = newSumVost
-                        //val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
+                        // val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
                         link = text.split(",")[1].replace("\"", "").trim()
                         dubStatus = "vostfr"
                     }
@@ -648,9 +639,9 @@ class AnimeSamaProvider : MainAPI() {
                     }
                     if (newSum >= sum) {
                         sum = newSum
-                        //val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
+                        // val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
                         link = text.split(",")[1].replace("\"", "")
-                            .trim()//regexGetlink.find(link_on_click)?.groupValues?.get(1)
+                            .trim() // regexGetlink.find(link_on_click)?.groupValues?.get(1)
                         dubStatus = "fr"
                     }
                 } else if (!isVostfr && !isFR) {
@@ -660,12 +651,11 @@ class AnimeSamaProvider : MainAPI() {
 
                     if (newSumMovie >= sumMovie) {
                         sum = newSum
-                        //val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
+                        // val link_on_click = this[i].attr("onclick") ?: throw ErrorLoadingException()
                         link = text.split(",")[1].replace("\"", "")
-                            .trim()//regexGetlink.find(link_on_click)?.groupValues?.get(1)
+                            .trim() // regexGetlink.find(link_on_click)?.groupValues?.get(1)
                         dubStatus = "film"
                     }
-
                 }
                 newSumMovie = 0
                 newSumVost = 0
@@ -697,7 +687,6 @@ class AnimeSamaProvider : MainAPI() {
         ) {
             this.posterUrl = posterUrl
         }
-
     }
 
     val newEp = Regex("""cartePlanningAnime\(\"(.*)\)\;""")
@@ -709,7 +698,9 @@ class AnimeSamaProvider : MainAPI() {
                 .contains("/scan/")
         ) {
             val linked = fixUrl(link)
-            val html = avoidCloudflare(linked)//app.get(linked)
+            val html = withContext(Dispatchers.IO) {
+                avoidCloudflare(linked) // app.get(linked)
+            }
             val document = html.document
             val posterUrl = document.select("img#imgOeuvre").attr("src")
 
@@ -736,20 +727,24 @@ class AnimeSamaProvider : MainAPI() {
                 this.posterUrl = posterUrl
                 this.dubStatus = dubstatus
             }
-
         } else {
             return null
         }
-
     }
 
     suspend fun avoidCloudflare(url: String): NiceResponse {
-        if(1==1) {return app.get(url)
-            //return app.get(url, interceptor = interceptor)
+        if (1 == 1) {
+            return withContext(Dispatchers.IO) {
+                app.get(url)
+                // return app.get(url, interceptor = interceptor)
+            }
         } else {
-            return app.get(url)
+            return withContext(Dispatchers.IO) {
+                app.get(url)
+            }
         }
     }
+
     override val mainPage = mainPageOf(
         Pair(mainUrl, "NOUVEAUX"),
         Pair(mainUrl, "A ne pas rater"),
@@ -769,31 +764,20 @@ class AnimeSamaProvider : MainAPI() {
         val idDay: String
 
         idDay = when (today) {
-
-            Calendar.MONDAY -> {
-                "1"
-            }
-            Calendar.TUESDAY -> {
-                "2"
-            }
-            Calendar.WEDNESDAY -> {
-                "3"
-            }
-            Calendar.THURSDAY -> {
-                "4"
-            }
-            Calendar.FRIDAY -> {
-                "5"
-            }
-            Calendar.SATURDAY -> {
-                "6"
-            }
+            Calendar.MONDAY -> "1"
+            Calendar.TUESDAY -> "2"
+            Calendar.WEDNESDAY -> "3"
+            Calendar.THURSDAY -> "4"
+            Calendar.FRIDAY -> "5"
+            Calendar.SATURDAY -> "6"
             else -> "0"
         }
         var home: List<SearchResponse> = mutableListOf()
 
         if (page <= 1) {
-            val document = avoidCloudflare(url).document //app.get(url).document
+            val document = withContext(Dispatchers.IO) {
+                avoidCloudflare(url).document // app.get(url).document
+            }
             cssSelector = "div.scrollBarStyled"
             cssSelectorN = "div#$idDay.fadeJours > div > script"
             home = when (!categoryName.isBlank()) {
